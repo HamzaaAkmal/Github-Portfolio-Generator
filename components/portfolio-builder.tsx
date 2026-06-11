@@ -27,6 +27,7 @@ import {
   type ChangeEvent,
   type FormEvent
 } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   createPortfolioBundle,
   downloadPortfolioZip
@@ -47,6 +48,8 @@ const steps = [
   "Edit portfolio",
   "Publish"
 ];
+
+const stepSlugs = ["connect", "projects", "generate", "edit", "publish"];
 
 const templates: Array<{
   id: PortfolioTemplate;
@@ -113,9 +116,26 @@ function featuredCount(projects: PortfolioProject[]) {
     .length;
 }
 
-export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
-  const [activeStep, setActiveStep] = useState(0);
-  const [furthestStep, setFurthestStep] = useState(0);
+export function PortfolioBuilder({ 
+  baseDomain
+}: { 
+  baseDomain: string;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Get initial step from URL or default to 0
+  const getInitialStep = () => {
+    const stepParam = searchParams.get('step');
+    if (stepParam) {
+      const index = stepSlugs.indexOf(stepParam);
+      return index !== -1 ? index : 0;
+    }
+    return 0;
+  };
+  
+  const [activeStep, setActiveStep] = useState(getInitialStep);
+  const [furthestStep, setFurthestStep] = useState(getInitialStep);
   const [username, setUsername] = useState("");
   const [profile, setProfile] = useState<GitHubProfile>(emptyProfile);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
@@ -181,6 +201,7 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
   function advance(step: number) {
     setActiveStep(step);
     setFurthestStep((current) => Math.max(current, step));
+    router.push(`/?step=${stepSlugs[step]}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -230,7 +251,7 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
   function toggleSelected(project: PortfolioProject) {
     const count = selectedCount(projects);
     if (!project.selected && count >= 10) {
-      setNotice("Choose at most 10 projects.");
+      setNotice("You can select up to 10 projects maximum.");
       return;
     }
 
@@ -246,8 +267,12 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
       setNotice("Select the project before featuring it.");
       return;
     }
-    if (!project.featured && featuredCount(projects) >= 3) {
-      setNotice("Choose exactly three featured projects.");
+    const currentFeatured = featuredCount(projects);
+    const selected = selectedCount(projects);
+    
+    // Allow featuring/unfeaturing when appropriate
+    if (!project.featured && selected >= 3 && currentFeatured >= 3) {
+      setNotice("You can feature up to 3 projects. Unfeature one first.");
       return;
     }
 
@@ -310,16 +335,66 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
       return;
     }
 
-    if (project.imageUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(project.imageUrl);
-    }
-    const imageUrl = URL.createObjectURL(file);
-    setImages((current) => ({ ...current, [project.id]: file }));
-    updateProject(project.id, {
-      imageName: file.name,
-      imageUrl
-    });
-    setNotice("");
+    // Resize and optimize the image
+    const img = new Image();
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      img.onload = () => {
+        // Create canvas for resizing (ideal card size: 1200x675 for 16:9 ratio)
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        const maxWidth = 1200;
+        const maxHeight = 675;
+        let width = img.width;
+        let height = img.height;
+        
+        // Calculate aspect ratio
+        const aspectRatio = width / height;
+        
+        if (width > maxWidth || height > maxHeight) {
+          if (aspectRatio > maxWidth / maxHeight) {
+            width = maxWidth;
+            height = width / aspectRatio;
+          } else {
+            height = maxHeight;
+            width = height * aspectRatio;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and resize image
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          
+          const resizedFile = new File([blob], file.name, {
+            type: file.type,
+            lastModified: Date.now()
+          });
+          
+          if (project.imageUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(project.imageUrl);
+          }
+          const imageUrl = URL.createObjectURL(resizedFile);
+          setImages((current) => ({ ...current, [project.id]: resizedFile }));
+          updateProject(project.id, {
+            imageName: resizedFile.name,
+            imageUrl
+          });
+          setNotice("");
+        }, file.type, 0.9);
+      };
+      img.src = e.target?.result as string;
+    };
+    
+    reader.readAsDataURL(file);
   }
 
   function continueToGeneration() {
@@ -331,11 +406,12 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
       return;
     }
     if (selected.length > 10) {
-      setNotice("Choose at most 10 projects.");
+      setNotice("You can select up to 10 projects maximum.");
       return;
     }
-    if (selected.length >= 3 && featured.length !== 3) {
-      setNotice("Choose exactly three featured projects.");
+    // Make featured projects optional if less than 3 selected
+    if (selected.length >= 3 && featured.length > 3) {
+      setNotice("You can feature up to 3 projects maximum.");
       return;
     }
     if (selected.some((project) => !project.name.trim())) {
@@ -589,32 +665,6 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
 
   return (
     <main className="builder-page">
-      <header className="builder-header">
-        <a className="builder-brand" href="#">
-          <span className="brand-mark">
-            <Code2 size={18} />
-          </span>
-          Gitfolio Studio
-        </a>
-        <div className="header-note">GitHub to portfolio, without boilerplate.</div>
-      </header>
-
-      <section className="builder-hero">
-        <div className="hero-kicker">
-          <span />
-          Portfolio generator
-        </div>
-        <h1>
-          Your work,
-          <br />
-          <span>properly framed.</span>
-        </h1>
-        <p>
-          Import live GitHub projects, shape the story with Kimi, attach your
-          resume, then download or publish to a real subdomain.
-        </p>
-      </section>
-
       <div className="builder-beam" />
 
       <nav className="stepper" aria-label="Portfolio creation steps">
@@ -624,7 +674,12 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
             type="button"
             className={index === activeStep ? "is-active" : ""}
             disabled={index > furthestStep}
-            onClick={() => index <= furthestStep && setActiveStep(index)}
+            onClick={() => {
+              if (index <= furthestStep) {
+                setActiveStep(index);
+                router.push(`/?step=${stepSlugs[index]}`);
+              }
+            }}
           >
             <span>{index < furthestStep ? <Check size={13} /> : index + 1}</span>
             {step}
@@ -672,15 +727,15 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
             <div className="workspace-heading">
               <div>
                 <div className="section-label">02 / Curate</div>
-                <h2>Choose up to ten projects.</h2>
+                <h2>Choose your projects (1-10).</h2>
                 <p>
-                  Mark three as featured, edit any imported detail, add custom
-                  work, or attach interface screenshots.
+                  Select 1 to 10 projects (3 recommended). Mark up to 3 as featured, 
+                  edit any imported detail, add custom work, or attach interface screenshots.
                 </p>
               </div>
               <div className="counter-stack">
                 <strong>{selectedCount(projects)} / 10</strong>
-                <span>{featuredCount(projects)} / 3 featured</span>
+                <span>{featuredCount(projects)} featured</span>
               </div>
             </div>
 
@@ -803,7 +858,7 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
                   <div className="project-editor-footer">
                     <label className="image-upload">
                       <ImagePlus size={16} />
-                      {project.imageName || "Add screenshot"}
+                      {project.imageName || "Add screenshot (auto-resized to 1200×675)"}
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/webp"
@@ -1282,14 +1337,30 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
 
             {deployedUrl ? (
               <div className="success-panel">
-                <div>
+                <div className="success-header">
                   <Check size={20} />
                   <span>Portfolio deployed</span>
                 </div>
-                <a href={deployedUrl} target="_blank" rel="noreferrer">
-                  {deployedUrl}
-                  <ExternalLink size={15} />
-                </a>
+                <div className="deployment-links">
+                  <div className="link-row">
+                    <span className="link-label">Subdomain (may take a few minutes):</span>
+                    <a href={deployedUrl} target="_blank" rel="noreferrer">
+                      {deployedUrl}
+                      <ExternalLink size={15} />
+                    </a>
+                  </div>
+                  <div className="link-row">
+                    <span className="link-label">Direct link (live now):</span>
+                    <a 
+                      href={`https://${baseDomain}/${slug}/index.html`} 
+                      target="_blank" 
+                      rel="noreferrer"
+                    >
+                      {baseDomain}/{slug}/index.html
+                      <ExternalLink size={15} />
+                    </a>
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -1303,8 +1374,15 @@ export function PortfolioBuilder({ baseDomain }: { baseDomain: string }) {
       </section>
 
       <footer className="builder-footer">
-        <span>Gitfolio Studio</span>
-        <span>GitHub · DigitalOcean Inference · cPanel UAPI</span>
+        <span>Gitfolio</span>
+        <a 
+          href="https://www.linkedin.com/in/hamzaaakmal/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="footer-credit"
+        >
+          Created by Hamza Akmal
+        </a>
       </footer>
     </main>
   );
