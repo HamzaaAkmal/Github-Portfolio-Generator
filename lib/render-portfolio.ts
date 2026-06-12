@@ -321,7 +321,7 @@ export function renderPortfolioHtml(data: PortfolioData) {
       <div class="shell hero-grid">
         <div>
           <div class="eyebrow">GitHub portfolio</div>
-          <h1>${escapeHtml(data.profile.login)}</h1>
+          <h1>${escapeHtml(data.profile.name)}</h1>
           <div class="headline">${escapeHtml(data.content.headline)}</div>
           ${locationLine ? `<div class="location">${locationLine}</div>` : ""}
         </div>
@@ -390,9 +390,7 @@ export function renderPortfolioHtml(data: PortfolioData) {
       </div>
     </section>
   </main>
-  <footer><div class="shell footer-inner"><span>${escapeHtml(
-    data.profile.name
-  )}</span><span>Generated from GitHub · ${new Date().getFullYear()}</span></div></footer>
+  <footer><div class="shell footer-inner"><span>Created using <a href="https://github.com/HamzaaAkmal/Github-Portfolio-Generator" target="_blank" rel="noopener noreferrer" style="color:#60a5fa">Gitfolio</a></span><span>${new Date().getFullYear()}</span></div></footer>
 </body>
 </html>`;
 }
