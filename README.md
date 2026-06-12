@@ -1,4 +1,4 @@
-# Gitfolio Studio 
+# Stop wasting weekends building portfolio sites.
 # Author Hamza Akmal
 
 A full-stack GitHub-to-portfolio generator built with Next.js, React, and
