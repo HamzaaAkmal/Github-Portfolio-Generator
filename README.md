@@ -1,4 +1,5 @@
-# Gitfolio Studio
+# Gitfolio Studio 
+# Author Hamza Akmal
 
 A full-stack GitHub-to-portfolio generator built with Next.js, React, and
 TypeScript. It keeps the CalSans typography, black/zinc surfaces, gradient
