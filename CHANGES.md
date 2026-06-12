@@ -1,6 +1,6 @@
 # Portfolio Generator - Implementation Summary
 
-## Changes Implemented ✅
+## Changes Implemented 
 
 ### 1. **Automatic Image Resizing**
 - Images are now automatically resized to optimal card dimensions (1200×675 pixels, 16:9 ratio)
